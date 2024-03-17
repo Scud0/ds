@@ -1,0 +1,144 @@
+{
+  "api": {
+    "filename": "quantdatav2_bybit.json",
+    "mode": "remote",
+    "url": "https://api.quantumvoid.org/volumedata/",
+    "data_source_exchange": "bybit"
+  },
+  "bot": {
+    "bot_name": "your_bot_name",
+    "symbol": "BTCUSDT",
+    "volume_check": true,
+    "min_distance": 0.15,
+    "min_volume": 10000,
+    "wallet_exposure_limit": 0.0001,
+    "user_defined_leverage_long": 1.0,
+    "user_defined_leverage_short": 1.0,
+    "upnl_profit_pct": 0.0033,
+    "stoploss_enabled": false,
+    "stoploss_upnl_pct": 0.05,
+    "liq_stoploss_enabled": false,
+    "liq_price_stop_pct": 0.50,
+    "percentile_auto_reduce_enabled": false,
+    "auto_reduce_enabled": true,
+    "upnl_threshold_pct": 0.40,
+    "auto_reduce_start_pct": 0.048,
+    "auto_reduce_maxloss_pct": 0.30,
+    "max_pos_balance_pct": 0.30,
+    "auto_reduce_wallet_exposure_pct": 0.20,
+    "auto_reduce_marginbased_enabled": false,
+    "entry_during_autoreduce": false,
+    "hedge_ratio": 0.10,
+    "hedge_price_difference_threshold": 0.10,
+    "auto_leverage_upscale": false,
+    "test_orders_enabled": false,
+    "max_usd_value": 100,
+    "min_qty_threshold": 0,
+    "long_liq_pct": 0.05,
+    "short_liq_pct": 0.05,
+    "MaxAbsFundingRate": 0.0002,
+    "blacklist": ["SOLUSDT", "10000*", "1000*", "BTCUSDT", "ETHUSDT", "1000LADYSUSDT", "BCHUSDT", "LUNA2USDT", "1000BONKUSDT", "1000000VINUUSDT", "10000LADYSUSDT", "10000SATSUSDT", "CTCUSDT", "1000PEPEUSDT", "USTUSDT", "TRBUSDT", "BSVUSDT", "AVAXUSDT"],
+    "whitelist": [],
+    "dashboard_enabled": false,
+    "shared_data_path": "data/"
+  },
+  "exchanges": [
+    {
+      "name": "bybit",
+      "account_name": "account_1",
+      "api_key": "",
+      "api_secret": "",
+      "symbols_allowed": 10 
+    },
+    {
+      "name": "bybit",
+      "account_name": "account_2",
+      "api_key": "",
+      "api_secret": "",
+      "symbols_allowed": 5
+    },
+    {
+      "name": "bybit_unified", //NOT WORKING ATM
+      "account_name": "account_3",
+      "api_key": "",
+      "api_secret": "",
+      "symbols_allowed": 5
+    },
+    {
+      "name": "bitget", //NOT WORKING ATM
+      "account_name": "account_1",
+      "api_key": "",
+      "api_secret": "",
+      "passphrase": "",
+      "symbols_allowed": 8 
+    },
+    {
+      "name": "okx", //NOT WORKING ATM
+      "account_name": "account_1",
+      "api_key": "",
+      "api_secret": "",
+      "passphrase": "",
+      "symbols_allowed": 12 
+    },
+    {
+      "name": "huobi", //NOT WORKING ATM
+      "account_name": "account_1",
+      "api_key": "",
+      "api_secret": "",
+      "symbols_allowed": 10 
+    },
+    {
+      "name": "binance", //NOT WORKING ATM
+      "account_name": "account_1",
+      "api_key": "",
+      "api_secret": "",
+      "symbols_allowed": 9 
+    },
+    {
+      "name": "phemex", //NOT WORKING ATM
+      "account_name": "account_1",
+      "api_key": "",
+      "api_secret": "",
+      "symbols_allowed": 7 
+    },
+    {
+      "name": "apex", //NOT WORKING ATM
+      "account_name": "apex01",
+      "quote": "USDC", //usdt or usdc
+      "api_key": "",
+      "api_secret": "",
+      "api_passphrase": "",
+      "stark_key_private": "",
+      "stark_key_public": "",
+      "stark_key_publickey_y_coordinate": "",
+      "symbols_allowed": 1 
+    },
+    {
+      "name": "hyperliquid",
+      "account_name": "hyperliquid01",
+      "quote": "USDC", //usdc only at hyperliquid
+      "wallet_address": "",
+      "api_wallet_address": "",
+      "api_private_key": "",
+      "symbols_allowed": 1 
+    }
+  ],
+  "logger": {
+    "level": "info"
+  },
+  "messengers": {
+    "discord": {
+      "active": false,
+      "embedded_messages": true,
+      "messenger_type": "discord",
+      "webhook_url": "https://discord.com/api/webhooks/your_webhook_id/your_webhook_token"
+    },
+    "telegram": {
+      "active": false,
+      "embedded_messages": true,
+      "messenger_type": "telegram",
+      "bot_token": "your_bot_token",
+      "chat_id": "your_chat_id"
+    }
+  }
+}
