@@ -16,18 +16,17 @@ import config
 from config import load_config, Config
 from config import VERSION
 from api.manager import Manager
-from directionalscalper.core.exchange import Exchange
-from directionalscalper.core.strategies.strategy import Strategy
 
+#Exchanges
+from directionalscalper.core.exchanges.ccxt_exchange_generic import Exchange
 
-import directionalscalper.core.strategies.bybit.scalping as bybit_scalping
-import directionalscalper.core.strategies.bybit.hedging as bybit_hedging
-from directionalscalper.core.strategies.binance import *
-from directionalscalper.core.strategies.huobi import *
+#Strategies
+#TODO: make this generic via strategy.py
+from directionalscalper.core.strategies.quickscalp_trend_ob import QuickScalpTrendOB
 
 from live_table_manager import LiveTableManager, shared_symbols_data
 
-
+#TODO: folder up
 from directionalscalper.core.strategies.logger import Logger
 
 from collections import deque
@@ -51,16 +50,16 @@ def standardize_symbol(symbol):
 
 def get_available_strategies():
     return [
-        'bybit_1m_qfl_mfi_eri_walls',
-        'bybit_1m_qfl_mfi_eri_autohedge_walls_atr',
-        'bybit_mfirsi_imbalance',
-        'bybit_mfirsi_quickscalp',
-        'qstrend',
-        'mfieritrend',
-        'qstrendob',
-        'qstrendlongonly',
-        'qstrend_unified',
-        'qstrend_dca',
+    #    'bybit_1m_qfl_mfi_eri_walls',
+    #    'bybit_1m_qfl_mfi_eri_autohedge_walls_atr',
+    #    'bybit_mfirsi_imbalance',
+    #    'bybit_mfirsi_quickscalp',
+    #    'qstrend',
+    #    'mfieritrend',
+        'QuickscalpTrendOrderbook',
+    #    'qstrendlongonly',
+    #    'qstrend_unified',
+    #    'qstrend_dca',
     ]
 
 def choose_strategy():
@@ -73,7 +72,8 @@ def choose_strategy():
     return answers['strategy']
 
 def get_available_exchanges():
-    return ['bybit', 'bitget', 'mexc', 'huobi', 'okx', 'binance', 'phemex']
+    return ['bybit[CEX]', 'hyperliquid[DEX]']
+    #return ['bybit', 'bitget', 'mexc', 'huobi', 'okx', 'binance', 'phemex', 'APEX']
 
 def ask_for_missing_arguments(args):
     questions = []
@@ -126,60 +126,70 @@ class DirectionalMarketMaker:
             print(f"Calling run method with symbols: {symbols_to_trade}")
 
         # Pass symbols_allowed to the strategy constructors
-        if strategy_name.lower() == 'bybit_1m_qfl_mfi_eri_walls':
-            strategy = bybit_scalping.BybitMMOneMinuteQFLMFIERIWalls(self.exchange, self.manager, config.bot, symbols_allowed)
-            strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
-        elif strategy_name.lower() == 'bybit_1m_qfl_mfi_eri_autohedge_walls_atr':
-            strategy = bybit_hedging.BybitMMOneMinuteQFLMFIERIAutoHedgeWallsATR(self.exchange, self.manager, config.bot, symbols_allowed)
-            strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
-        elif strategy_name.lower() == 'bybit_mfirsi_imbalance':
-            strategy = bybit_scalping.BybitMFIRSIERIOBImbalance(self.exchange, self.manager, config.bot, symbols_allowed)
-            strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
-        elif strategy_name.lower() == 'bybit_mfirsi_quickscalp':
-            strategy = bybit_scalping.BybitMFIRSIQuickScalp(self.exchange, self.manager, config.bot, symbols_allowed)
-            strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
-        elif strategy_name.lower() == 'qstrend':
-            strategy = bybit_scalping.BybitQuickScalpTrend(self.exchange, self.manager, config.bot, symbols_allowed)
-            strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
-        elif strategy_name.lower() == 'qstrend_dca':
-            strategy = bybit_scalping.BybitQuickScalpTrendDCA(self.exchange, self.manager, config.bot, symbols_allowed)
-            strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
-        elif strategy_name.lower() == 'mfieritrend':
-            strategy = bybit_scalping.BybitMFIERILongShortTrend(self.exchange, self.manager, config.bot, symbols_allowed)
-            strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
-        elif strategy_name.lower() == 'qstrendlongonly':
-            strategy = bybit_scalping.BybitMFIRSIQuickScalpLong(self.exchange, self.manager, config.bot, symbols_allowed)
-            strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
-        elif strategy_name.lower() == 'qstrendob':
-            strategy = bybit_scalping.BybitQuickScalpTrendOB(self.exchange, self.manager, config.bot, symbols_allowed)
-            strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
-        elif strategy_name.lower() == 'qstrend_unified':
-            strategy = bybit_scalping.BybitQuickScalpUnified(self.exchange, self.manager, config.bot, symbols_allowed)
+        # if strategy_name.lower() == 'bybit_1m_qfl_mfi_eri_walls':
+        #     strategy = bybit_scalping.BybitMMOneMinuteQFLMFIERIWalls(self.exchange, self.manager, config.bot, symbols_allowed)
+        #     strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
+        # elif strategy_name.lower() == 'bybit_1m_qfl_mfi_eri_autohedge_walls_atr':
+        #     strategy = bybit_hedging.BybitMMOneMinuteQFLMFIERIAutoHedgeWallsATR(self.exchange, self.manager, config.bot, symbols_allowed)
+        #     strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
+        # elif strategy_name.lower() == 'bybit_mfirsi_imbalance':
+        #     strategy = bybit_scalping.BybitMFIRSIERIOBImbalance(self.exchange, self.manager, config.bot, symbols_allowed)
+        #     strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
+        # elif strategy_name.lower() == 'bybit_mfirsi_quickscalp':
+        #     strategy = bybit_scalping.BybitMFIRSIQuickScalp(self.exchange, self.manager, config.bot, symbols_allowed)
+        #     strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
+        # elif strategy_name.lower() == 'qstrend':
+        #     strategy = bybit_scalping.BybitQuickScalpTrend(self.exchange, self.manager, config.bot, symbols_allowed)
+        #     strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
+        # elif strategy_name.lower() == 'qstrend_dca':
+        #     strategy = bybit_scalping.BybitQuickScalpTrendDCA(self.exchange, self.manager, config.bot, symbols_allowed)
+        #     strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
+        # elif strategy_name.lower() == 'mfieritrend':
+        #     strategy = bybit_scalping.BybitMFIERILongShortTrend(self.exchange, self.manager, config.bot, symbols_allowed)
+        #     strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
+        # elif strategy_name.lower() == 'qstrendlongonly':
+        #     strategy = bybit_scalping.BybitMFIRSIQuickScalpLong(self.exchange, self.manager, config.bot, symbols_allowed)
+        #     strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
+        # elif strategy_name.lower() == 'qstrendob':
+        #     strategy = bybit_scalping.BybitQuickScalpTrendOB(self.exchange, self.manager, config.bot, symbols_allowed)
+        #     strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
+        # elif strategy_name.lower() == 'qstrend_unified':
+        #     strategy = bybit_scalping.BybitQuickScalpUnified(self.exchange, self.manager, config.bot, symbols_allowed)
+        #     strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
+        if strategy_name.lower() == 'quickscalptrendorderbook':
+            strategy = QuickScalpTrendOB(self.exchange, self.manager, config.bot, symbols_allowed)
             strategy.run(symbol, rotator_symbols_standardized=rotator_symbols_standardized)
 
+#TODO: move this to ccxt.exchange.generic.py or specific exchange file. 
+#TODO: function isnt called? 
     def get_balance(self, quote, market_type=None, sub_type=None):
-        if self.exchange_name == 'bitget':
-            return self.exchange.get_balance_bitget(quote)
-        elif self.exchange_name == 'bybit':
+        # if self.exchange_name == 'bitget':
+        #     return self.exchange.get_balance_bitget(quote)
+        if self.exchange_name == 'bybit':
             #self.exchange.retry_api_call(self.exchange.get_balance_bybit, quote)
             # return self.exchange.retry_api_call(self.exchange.get_balance_bybit(quote))
             return self.exchange.get_balance_bybit(quote)
-        elif self.exchange_name == 'bybit_unified':
-            return self.exchange.retry_api_call(self.exchange.get_balance_bybit(quote))
-        elif self.exchange_name == 'mexc':
-            return self.exchange.get_balance_mexc(quote, market_type='swap')
-        elif self.exchange_name == 'huobi':
-            print("Huobi starting..")
-        elif self.exchange_name == 'okx':
-            print(f"Unsupported for now")
-        elif self.exchange_name == 'binance':
-            return self.exchange.get_balance_binance(quote)
-        elif self.exchange_name == 'phemex':
-            print(f"Unsupported for now")
+        # elif self.exchange_name == 'bybit_unified':
+        #     return self.exchange.retry_api_call(self.exchange.get_balance_bybit(quote))
+        # elif self.exchange_name == 'mexc':
+        #     return self.exchange.get_balance_mexc(quote, market_type='swap')
+        # elif self.exchange_name == 'huobi':
+        #     print("Huobi starting..")
+        # elif self.exchange_name == 'okx':
+        #     print(f"Unsupported for now")
+        # elif self.exchange_name == 'binance':
+        #     return self.exchange.get_balance_binance(quote)
+        # elif self.exchange_name == 'phemex':
+        #     print(f"Unsupported for now")
+        elif self.exchange_name == 'hyperliquid':
+            balance = Exchange.get_balance(quote)
+            return balance # (or directly? self.exchange.APEX.get_balance(quote) #TODO move to exchange.bybit.py
 
+#TODO: exchange interaction; move this to ccxt.exchange.generic.py or specific exchange file. 
     def create_order(self, symbol, order_type, side, amount, price=None):
         return self.exchange.create_order(symbol, order_type, side, amount, price)
 
+#TODO: exchange interaction; move this to ccxt.exchange.generic.py or specific exchange file. 
     def get_symbols(self):
         return self.exchange.symbols
 
@@ -223,7 +233,8 @@ def run_bot(symbol, args, manager, account_name, symbols_allowed, rotator_symbol
         # Pass rotator_symbols_standardized to the run_strategy method
         market_maker.run_strategy(symbol, strategy_name, config, account_name, symbols_to_trade=symbols_allowed, rotator_symbols_standardized=rotator_symbols_standardized)
 
-        quote = "USDT"
+#TODO: HL isnt always usdt
+        quote = "USDC"
         current_time = time.time()
         # if current_time - last_balance_fetch_time > BALANCE_REFRESH_INTERVAL or not cached_balance:
         #     if exchange_name.lower() == 'huobi':
@@ -311,7 +322,7 @@ if __name__ == '__main__':
 
     print("\n" + "=" * 50)
     print(f"DirectionalScalper {VERSION}".center(50))
-    print(f"Developed by Tyler Simpson and contributors at TradeSimple".center(50))
+    print(f"Developed by Tyler Simpson and contributors at Quantum Void Labs".center(50))
     print("=" * 50 + "\n")
 
     print("Initializing", end="")
@@ -326,7 +337,7 @@ if __name__ == '__main__':
     print(sword.center(50) + "\n")
 
     parser = argparse.ArgumentParser(description='DirectionalScalper')
-    parser.add_argument('--config', type=str, default='configs/config.json', help='Path to the configuration file')
+    parser.add_argument('--config', type=str, default='configs/config.hjson', help='Path to the configuration file')
     parser.add_argument('--account_name', type=str, help='The name of the account to use')
     parser.add_argument('--exchange', type=str, help='The name of the exchange to use')
     parser.add_argument('--strategy', type=str, help='The name of the strategy to use')
@@ -393,7 +404,7 @@ if __name__ == '__main__':
     all_symbols_standardized = [standardize_symbol(symbol) for symbol in manager.get_auto_rotate_symbols(min_qty_threshold=None, blacklist=blacklist, whitelist=whitelist, max_usd_value=max_usd_value)]
 
     # Get symbols with open positions and standardize them
-    open_position_data = market_maker.exchange.get_all_open_positions_bybit()
+    open_position_data = market_maker.exchange.get_all_open_positions()
     open_positions_symbols = [standardize_symbol(position['symbol']) for position in open_position_data]
 
     print(f"Open positions symbols: {open_positions_symbols}")
@@ -413,7 +424,7 @@ if __name__ == '__main__':
             max_usd_value = config.bot.max_usd_value
 
             # Fetching open position symbols and standardizing them
-            open_position_symbols = {standardize_symbol(pos['symbol']) for pos in market_maker.exchange.get_all_open_positions_bybit()}
+            open_position_symbols = {standardize_symbol(pos['symbol']) for pos in market_maker.exchange.get_all_open_positions()}
             logging.info(f"Open position symbols: {open_position_symbols}")
 
             # Fetching potential symbols from manager

@@ -3,7 +3,7 @@ from typing import List, Optional
 
 import os
 from pathlib import Path
-import json
+import hjson
 from enum import Enum
 from typing import Union
 
@@ -12,10 +12,11 @@ from pydantic import BaseModel, HttpUrl, ValidationError, validator, DirectoryPa
 from directionalscalper.core.strategies.logger import Logger
 logging = Logger(logger_name="Configuration", filename="Configuration.log", stream=True)
 
-VERSION = "v2.8.6"
+VERSION = "Scud@HYPERLIQUID v0.0.1"
 
 class Exchanges(Enum):
     BYBIT = "bybit"
+    HYPERLIQUID = "hyperliquid"
 
 
 class Messengers(Enum):
@@ -257,8 +258,8 @@ def load_config(path):
     else:
         with open(path) as f:
             try:
-                data = json.load(f)
-            except json.JSONDecodeError as exc:
+                data = hjson.load(f)
+            except hjson.JSONDecodeError as exc:
                 raise ValueError(
                     f"ERROR: Invalid JSON: {exc.msg}, line {exc.lineno}, column {exc.colno}"
                 )
@@ -275,35 +276,17 @@ def load_config(path):
             error_details = "\n".join([f"{err['loc']} - {err['msg']}" for err in e.errors()])
             raise ValueError(f"Configuration Error(s):\n{error_details}")
         
-# def load_config(path):
-#     if not path.is_file():
-#         raise ValueError(f"{path} does not exist")
-#     else:
-#         f = open(path)
-#         try:
-#             data = json.load(f)
-#         except json.JSONDecodeError as exc:
-#             raise ValueError(
-#                 f"ERROR: Invalid JSON: {exc.msg}, line {exc.lineno}, column {exc.colno}"
-#             )
-#         try:
-#             return Config(**data)
-#         except ValidationError as e:
-#             # Enhancing the error output for better clarity
-#             error_details = "\n".join([f"{err['loc']} - {err['msg']}" for err in e.errors()])
-#             raise ValueError(f"Configuration Error(s):\n{error_details}")
-
 def get_exchange_name(cli_exchange_name):
     if cli_exchange_name:
         return cli_exchange_name
     else:
-        with open('config.json') as file:
-            data = json.load(file)
+        with open('config.hjson') as file:
+            data = hjson.load(file)
             return data['exchanges'][0]['name']
 
 def get_exchange_credentials(exchange_name, account_name):
-    with open('config.json') as file:
-        data = json.load(file)
+    with open('config.hjson') as file:
+        data = hjson.load(file)
         exchange_data = None
         for exchange in data['exchanges']:
             if exchange['name'] == exchange_name and exchange['account_name'] == account_name:
@@ -312,82 +295,18 @@ def get_exchange_credentials(exchange_name, account_name):
         if exchange_data:
             api_key = exchange_data['api_key']
             secret_key = exchange_data['api_secret']
-            passphrase = exchange_data.get('passphrase')
-            symbols_allowed = exchange_data.get('symbols_allowed', 12)  # Default to 12 if not specified
+            passphrase = exchange_data.get('passphrase')   
+            symbols_allowed = exchange_data.get('symbols_allowed', 10)  # Default to 10 if not specified    
+            # stark_key_private = exchange_data.get('stark_key_private')
+            # stark_key_public = exchange_data.get('stark_key_public')
+            # stark_key_publickey_y_coordinate = exchange_data.get('stark_key_publickey_y_coordinate')            
 
             # Logging the symbols_allowed value
             if 'symbols_allowed' in exchange_data:
                 logging.info(f"Retrieved symbols_allowed for {exchange_name}: {symbols_allowed}")
             else:
-                logging.warning(f"symbols_allowed not found for {exchange_name}. Defaulting to 12.")
+                logging.warning(f"symbols_allowed not found for {exchange_name}. Defaulting to 10.")
             
             return api_key, secret_key, passphrase, symbols_allowed
         else:
             raise ValueError(f"Account {account_name} for exchange {exchange_name} not found in the config file.")
-        
-# def get_exchange_credentials(exchange_name, account_name):
-#     with open('config.json') as file:
-#         data = json.load(file)
-#         exchange_data = None
-#         for exchange in data['exchanges']:
-#             if exchange['name'] == exchange_name and exchange['account_name'] == account_name:
-#                 exchange_data = exchange
-#                 break
-#         if exchange_data:
-#             api_key = exchange_data['api_key']
-#             secret_key = exchange_data['api_secret']
-#             passphrase = exchange_data.get('passphrase')
-#             symbols_allowed = exchange_data.get('symbols_allowed', 12)  # Default to 12 if not specified
-#             return api_key, secret_key, passphrase, symbols_allowed
-#         else:
-#             raise ValueError(f"Account {account_name} for exchange {exchange_name} not found in the config file.")
-
-# def get_exchange_credentials(exchange_name, account_name):
-#     with open('config.json') as file:
-#         data = json.load(file)
-#         exchange_data = None
-#         for exchange in data['exchanges']:
-#             if exchange['name'] == exchange_name and exchange['account_name'] == account_name:
-#                 exchange_data = exchange
-#                 break
-#         if exchange_data:
-#             api_key = exchange_data['api_key']
-#             secret_key = exchange_data['api_secret']
-#             passphrase = exchange_data.get('passphrase')  # Not all exchanges require a passphrase
-#             return api_key, secret_key, passphrase
-#         else:
-#             raise ValueError(f"Account {account_name} for exchange {exchange_name} not found in the config file.")
-        
-# def get_exchange_credentials(exchange_name):
-#     with open('config.json') as file:
-#         data = json.load(file)
-#         exchange_data = None
-#         for exchange in data['exchanges']:
-#             if exchange['name'] == exchange_name:
-#                 exchange_data = exchange
-#                 break
-#         if exchange_data:
-#             api_key = exchange_data['api_key']
-#             secret_key = exchange_data['api_secret']
-#             passphrase = exchange_data.get('passphrase')  # Not all exchanges require a passphrase
-#             return api_key, secret_key, passphrase
-#         else:
-#             raise ValueError(f"Exchange {exchange_name} not found in the config file.")
-
-
-# def get_exchange_name(cli_exchange_name):
-#     if cli_exchange_name:
-#         return cli_exchange_name
-#     else:
-#         with open('config.json') as file:
-#             data = json.load(file)
-#             return data['exchange']
-
-# def get_exchange_credentials(exchange_name):
-#     with open('config.json') as file:
-#         data = json.load(file)
-#         exchange_data = data['exchanges'][exchange_name]
-#         api_key = exchange_data['api_key']
-#         secret_key = exchange_data['secret_key']
-#         passphrase = exchange_data.get('passphrase')  # Not all exchanges require a passphrase
-#         return api_key, secret_key, passphrase

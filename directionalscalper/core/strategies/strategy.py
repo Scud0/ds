@@ -12,6 +12,7 @@ import os
 import uuid
 import logging
 import json
+import hjson #for the config file
 import threading
 import traceback
 import ccxt
@@ -30,7 +31,7 @@ class Strategy:
     initialized_symbols = set()
     initialized_symbols_lock = threading.Lock()
 
-    class Bybit:
+    class Exchange: #TODO
         def __init__(self, parent):
             self.parent = parent
 
@@ -46,7 +47,7 @@ class Strategy:
         self.short_dynamic_amount = {}
         self.printed_trade_quantities = False
         self.last_mfirsi_signal = None
-        self.TAKER_FEE_RATE = Decimal("0.00055")
+        self.TAKER_FEE_RATE = Decimal("0.00055")  #TODO: should come from exchange(file)
         self.taker_fee_rate = 0.055 / 100
         self.max_long_trade_qty = None
         self.max_short_trade_qty = None
@@ -99,7 +100,7 @@ class Strategy:
         self.dynamic_amount_per_symbol = {}
         self.max_trade_qty_per_symbol = {}
 
-        self.bybit = self.Bybit(self)
+        self.exchange = self.Exchange(self) #TODO
         
     def update_hedged_status(self, symbol, is_hedged):
         self.hedged_positions[symbol] = is_hedged
@@ -169,7 +170,7 @@ class Strategy:
         short_entry_size = max(max_short_position_value / best_bid_price, min_qty_usd_value / best_bid_price)
 
         # Adjusting entry sizes based on the symbol's minimum quantity precision
-        qty_precision = self.exchange.get_symbol_precision_bybit(symbol)[1]
+        qty_precision = self.exchange.get_symbol_precision(symbol)[1]
         long_entry_size_adjusted = round(long_entry_size, -int(math.log10(qty_precision)))
         short_entry_size_adjusted = round(short_entry_size, -int(math.log10(qty_precision)))
 
@@ -258,7 +259,7 @@ class Strategy:
 
 
     def get_open_symbols(self):
-        open_position_data = self.retry_api_call(self.exchange.get_all_open_positions_bybit)
+        open_position_data = self.retry_api_call(self.exchange.get_all_open_positions)
         position_symbols = set()
         for position in open_position_data:
             info = position.get('info', {})
@@ -282,7 +283,7 @@ class Strategy:
 
     def cleanup_before_termination(self, symbol):
         # Cancel all orders for the symbol and perform any other cleanup needed
-        self.exchange.cancel_all_orders_for_symbol_bybit(symbol)
+        self.exchange.cancel_all_orders_for_symbol(symbol)
 
     def detect_order_book_walls(self, symbol, threshold=5.0):
         order_book = self.exchange.get_orderbook(symbol)
@@ -359,7 +360,7 @@ class Strategy:
 
         return False
 
-    TAKER_FEE_RATE = 0.00055
+    TAKER_FEE_RATE = 0.00055 #TODO ; double? 
 
     def calculate_trading_fee(self, qty, executed_price, fee_rate=TAKER_FEE_RATE):
         order_value = qty / executed_price
@@ -574,14 +575,14 @@ class Strategy:
         atr = np.mean(tr[-period:])
         return atr
 
-    def convert_to_binance_symbol(symbol: str) -> str:
-        """Convert Bybit's symbol name to Binance's format."""
-        if symbol.startswith("SHIB1000"):
-            return "1000SHIBUSDT"
-        # Add more conversions as needed
-        # if symbol.startswith("ANOTHEREXAMPLE"):
-        #     return "BINANCEFORMAT"
-        return symbol
+    # def convert_to_binance_symbol(symbol: str) -> str:
+    #     """Convert Bybit's symbol name to Binance's format."""
+    #     if symbol.startswith("SHIB1000"):
+    #         return "1000SHIBUSDT"
+    #     # Add more conversions as needed
+    #     # if symbol.startswith("ANOTHEREXAMPLE"):
+    #     #     return "BINANCEFORMAT"
+    #     return symbol
     
     def can_proceed_with_trade(self, symbol: str) -> dict:
         """
@@ -678,8 +679,10 @@ class Strategy:
 
         logging.info(f"Forced min qty long_dynamic_amount: {long_dynamic_amount}, short_dynamic_amount: {short_dynamic_amount}")
 
-        self.check_amount_validity_once_bybit(long_dynamic_amount, symbol)
-        self.check_amount_validity_once_bybit(short_dynamic_amount, symbol)
+        #self.check_amount_validity_once_bybit(long_dynamic_amount, symbol)
+        #self.check_amount_validity_once_bybit(short_dynamic_amount, symbol)
+        self.check_amount_validity_once(long_dynamic_amount, symbol) #TODO
+        self.check_amount_validity_once(short_dynamic_amount, symbol) #TODO
 
         # Using min_qty if dynamic amount is too small
         if long_dynamic_amount < min_qty:
@@ -892,11 +895,12 @@ class Strategy:
 
         return order
 
-    def limit_order_bybit_unified(self, symbol, side, amount, price, positionIdx, reduceOnly=False):
-        params = {"reduceOnly": reduceOnly}
-        #print(f"Symbol: {symbol}, Side: {side}, Amount: {amount}, Price: {price}, Params: {params}")
-        order = self.exchange.create_limit_order_bybit_unified(symbol, side, amount, price, positionIdx=positionIdx, params=params)
-        return order
+#TODO?
+    # def limit_order_bybit_unified(self, symbol, side, amount, price, positionIdx, reduceOnly=False):
+    #     params = {"reduceOnly": reduceOnly}
+    #     #print(f"Symbol: {symbol}, Side: {side}, Amount: {amount}, Price: {price}, Params: {params}")
+    #     order = self.exchange.create_limit_order_bybit_unified(symbol, side, amount, price, positionIdx=positionIdx, params=params)
+    #     return order
 
     def is_entry_order(self, symbol, order_id):
         """Checks if the given order ID is an entry order for the symbol."""
@@ -1016,29 +1020,6 @@ class Strategy:
     def cancel_take_profit_orders(self, symbol, side):
         self.exchange.cancel_close_bybit(symbol, side)
 
-    def limit_order_binance(self, symbol, side, amount, price, reduceOnly=False):
-        try:
-            params = {"reduceOnly": reduceOnly}
-            order = self.exchange.create_limit_order_binance(symbol, side, amount, price, params=params)
-            return order
-        except Exception as e:
-            print(f"An error occurred in limit_order(): {e}")
-
-    def get_open_take_profit_order_quantities_binance(self, open_orders, order_side):
-        return [(order['amount'], order['id']) for order in open_orders
-                if order['type'] == 'TAKE_PROFIT_MARKET' and
-                order['side'].lower() == order_side.lower() and
-                order.get('reduce_only', False)]        
-                
-    def get_open_take_profit_limit_order_quantities_binance(self, open_orders, order_side):
-        return [(order['amount'], order['id']) for order in open_orders
-                if order['type'] == 'LIMIT' and
-                order['side'].lower() == order_side.lower() and
-                order.get('reduce_only', False)]
-
-    def cancel_take_profit_orders_binance(self, symbol, side):
-        self.exchange.cancel_close_bybit(symbol, side)
-
 
     def calculate_short_conditions(self, short_pos_price, ma_6_low, short_take_profit, short_pos_qty):
         if short_pos_price is not None:
@@ -1089,17 +1070,6 @@ class Strategy:
                 else:
                     raise e
 
-    def get_market_data_with_retry_binance(self, symbol, max_retries=5, retry_delay=5):
-        for i in range(max_retries):
-            try:
-                return self.exchange.get_market_data_binance(symbol)
-            except Exception as e:
-                if i < max_retries - 1:
-                    print(f"Error occurred while fetching market data: {e}. Retrying in {retry_delay} seconds...")
-                    time.sleep(retry_delay)
-                else:
-                    raise e
-
     def get_balance_with_retry(self, quote_currency, max_retries=5, retry_delay=5):
         for i in range(max_retries):
             try:
@@ -1127,32 +1097,6 @@ class Strategy:
                 time.sleep(retry_delay)
 
         raise Exception("Failed to calculate maximum trade quantity after maximum retries.")
-
-
-    # def calc_max_trade_qty(self, symbol, total_equity, best_ask_price, max_leverage, max_retries=5, retry_delay=5):
-    #     wallet_exposure = self.config.wallet_exposure
-    #     for i in range(max_retries):
-    #         try:
-    #             market_data = self.get_market_data_with_retry(symbol, max_retries = 5, retry_delay = 5)
-    #             max_trade_qty = round(
-    #                 (float(total_equity) * wallet_exposure / float(best_ask_price))
-    #                 / (100 / max_leverage),
-    #                 int(float(market_data["min_qty"])),
-    #             )
-
-    #             logging.info(f"Max trade qty for {symbol} calculated: {max_trade_qty} ")
-                
-    #             return max_trade_qty
-    #         except TypeError as e:
-    #             if total_equity is None:
-    #                 print(f"Error: total_equity is None. Retrying in {retry_delay} seconds...")
-    #             if best_ask_price is None:
-    #                 print(f"Error: best_ask_price is None. Retrying in {retry_delay} seconds...")
-    #         except Exception as e:
-    #             print(f"An unexpected error occurred: {e}. Retrying in {retry_delay} seconds...")
-    #         time.sleep(retry_delay)
-
-    #     raise Exception("Failed to calculate maximum trade quantity after maximum retries.")
 
     def calc_max_trade_qty_multiv2(self, symbol, total_equity, best_ask_price, max_leverage, long_pos_qty_open_symbol, short_pos_qty_open_symbol, max_retries=5, retry_delay=5):
         wallet_exposure = self.config.wallet_exposure
@@ -1212,28 +1156,6 @@ class Strategy:
             
         raise Exception("Failed to calculate maximum trade quantity after maximum retries.")
 
-    def calc_max_trade_qty_binance(self, total_equity, best_ask_price, max_leverage, step_size, max_retries=5, retry_delay=5):
-        wallet_exposure = self.config.wallet_exposure
-        precision = int(-math.log10(float(step_size)))
-        for i in range(max_retries):
-            try:
-                max_trade_qty = (
-                    float(total_equity) * wallet_exposure / float(best_ask_price)
-                ) / (100 / max_leverage)
-                max_trade_qty = math.floor(max_trade_qty * 10**precision) / 10**precision
-
-                return max_trade_qty
-            except TypeError as e:
-                if total_equity is None:
-                    print(f"Error: total_equity is None. Retrying in {retry_delay} seconds...")
-                if best_ask_price is None:
-                    print(f"Error: best_ask_price is None. Retrying in {retry_delay} seconds...")
-            except Exception as e:
-                print(f"An unexpected error occurred: {e}. Retrying in {retry_delay} seconds...")
-            time.sleep(retry_delay)
-
-        raise Exception("Failed to calculate maximum trade quantity after maximum retries.")
-
     def check_amount_validity_bybit(self, amount, symbol):
         market_data = self.exchange.get_market_data_bybit(symbol)
         min_qty_bybit = market_data["min_qty"]
@@ -1253,28 +1175,6 @@ class Strategy:
                 return False
             else:
                 logging.info(f"The amount you entered ({amount}) is valid for {symbol}")
-                return True
-
-    def check_amount_validity_once_binance(self, amount, symbol):
-        if not self.checked_amount_validity_binance:
-            market_data = self.exchange.get_market_data_binance(symbol)
-            min_qty = float(market_data["min_qty"])
-            step_size = float(market_data['step_size'])
-            
-            if step_size == 0.0:
-                print(f"Step size is zero for {symbol}. Cannot calculate precision.")
-                return False
-
-            precision = int(-math.log10(step_size))
-            
-            # Ensure the amount is a multiple of step_size
-            amount = round(amount, precision)
-            
-            if amount < min_qty:
-                print(f"The amount you entered ({amount}) is less than the minimum required by Binance for {symbol}: {min_qty}.")
-                return False
-            else:
-                print(f"The amount you entered ({amount}) is valid for {symbol}")
                 return True
 
     def monitor_and_close_positions(self, symbol, threshold=0.02):
@@ -1340,14 +1240,6 @@ class Strategy:
                 self.MAX_LEVERAGE = original_max_leverage
 
             self.printed_trade_quantities = True
-
-    def print_trade_quantities_once_huobi(self, max_trade_qty, symbol):
-        if not self.printed_trade_quantities:
-            wallet_exposure = self.config.wallet_exposure
-            best_ask_price = self.exchange.get_orderbook(symbol)['asks'][0][0]
-            self.exchange.print_trade_quantities_bybit(max_trade_qty, [0.001, 0.01, 0.1, 1, 2.5, 5], wallet_exposure, best_ask_price)
-            self.printed_trade_quantities = True
-
 
     def get_1m_moving_averages(self, symbol):
         return self.manager.get_1m_moving_averages(symbol)
@@ -1649,88 +1541,7 @@ class Strategy:
         
         return short_take_profit, long_take_profit
 
-    def calculate_short_take_profit_binance(self, short_pos_price, symbol):
-        if short_pos_price is None:
-            return None
-
-        five_min_data = self.manager.get_5m_moving_averages(symbol)
-        print(f"five_min_data: {five_min_data}")
-
-        market_data = self.get_market_data_with_retry_binance(symbol, max_retries = 5, retry_delay = 5)
-        print(f"market_data: {market_data}")
-
-        step_size = market_data['step_size']
-        price_precision = int(-math.log10(float(step_size))) if float(step_size) < 1 else 8
-        print(f"price_precision: {price_precision}")
-
-
-        if five_min_data is not None:
-            ma_6_high = Decimal(five_min_data["MA_6_H"])
-            ma_6_low = Decimal(five_min_data["MA_6_L"])
-
-            try:
-                short_target_price = Decimal(short_pos_price) - (ma_6_high - ma_6_low)
-                print(f"short_target_price: {short_target_price}")
-            except InvalidOperation as e:
-                print(f"Error: Invalid operation when calculating short_target_price. short_pos_price={short_pos_price}, ma_6_high={ma_6_high}, ma_6_low={ma_6_low}")
-                return None
-
-            try:
-                short_target_price = short_target_price.quantize(
-                    Decimal('1e-{}'.format(price_precision)),
-                    rounding=ROUND_HALF_UP
-                )
-
-                print(f"quantized short_target_price: {short_target_price}")
-            except InvalidOperation as e:
-                print(f"Error: Invalid operation when quantizing short_target_price. short_target_price={short_target_price}, price_precision={price_precision}")
-                return None
-
-            short_profit_price = short_target_price
-
-            return float(short_profit_price)
-        return None
-
-    def calculate_long_take_profit_binance(self, long_pos_price, symbol):
-        if long_pos_price is None:
-            return None
-
-        five_min_data = self.manager.get_5m_moving_averages(symbol)
-        print(f"five_min_data: {five_min_data}")
-
-        market_data = self.get_market_data_with_retry_binance(symbol, max_retries = 5, retry_delay = 5)
-        print(f"market_data: {market_data}")
-
-        step_size = market_data['step_size']
-        price_precision = int(-math.log10(float(step_size))) if float(step_size) < 1 else 8
-        print(f"price_precision: {price_precision}")
-        
-        if five_min_data is not None:
-            ma_6_high = Decimal(five_min_data["MA_6_H"])
-            ma_6_low = Decimal(five_min_data["MA_6_L"])
-
-            try:
-                long_target_price = Decimal(long_pos_price) + (ma_6_high - ma_6_low)
-                print(f"long_target_price: {long_target_price}")
-            except InvalidOperation as e:
-                print(f"Error: Invalid operation when calculating long_target_price. long_pos_price={long_pos_price}, ma_6_high={ma_6_high}, ma_6_low={ma_6_low}")
-                return None
-
-            try:
-                long_target_price = long_target_price.quantize(
-                    Decimal('1e-{}'.format(price_precision)),
-                    rounding=ROUND_HALF_UP
-                )
-                print(f"quantized long_target_price: {long_target_price}")
-            except InvalidOperation as e:
-                print(f"Error: Invalid operation when quantizing long_target_price. long_target_price={long_target_price}, price_precision={price_precision}")
-                return None
-
-            long_profit_price = long_target_price
-
-            return float(long_profit_price)
-        return None
-        
+       
     def check_short_long_conditions(self, best_bid_price, ma_3_high):
         should_short = best_bid_price > ma_3_high
         should_long = best_bid_price < ma_3_high
@@ -1812,141 +1623,7 @@ class Strategy:
                 return base + '/' + quote
         return None
 
-#### HUOBI ####
-
-    def calculate_short_take_profit_huobi(self, short_pos_price, symbol):
-        if short_pos_price is None:
-            return None
-
-        five_min_data = self.manager.get_5m_moving_averages(symbol)
-        price_precision = int(self.exchange.get_price_precision(symbol))
-
-        if five_min_data is not None:
-            ma_6_high = Decimal(five_min_data["MA_6_H"])
-            ma_6_low = Decimal(five_min_data["MA_6_L"])
-
-            short_target_price = Decimal(short_pos_price) - (ma_6_high - ma_6_low)
-            short_target_price = short_target_price.quantize(
-                Decimal('1e-{}'.format(price_precision)),
-                #rounding=ROUND_HALF_UP
-                rounding=ROUND_DOWN
-            )
-
-            short_profit_price = short_target_price
-
-            return float(short_profit_price)
-        return None
-
-    def calculate_long_take_profit_huobi(self, long_pos_price, symbol):
-        if long_pos_price is None:
-            return None
-
-        five_min_data = self.manager.get_5m_moving_averages(symbol)
-        price_precision = int(self.exchange.get_price_precision(symbol))
-
-        if five_min_data is not None:
-            ma_6_high = Decimal(five_min_data["MA_6_H"])
-            ma_6_low = Decimal(five_min_data["MA_6_L"])
-
-            long_target_price = Decimal(long_pos_price) + (ma_6_high - ma_6_low)
-            long_target_price = long_target_price.quantize(
-                Decimal('1e-{}'.format(price_precision)),
-                rounding=ROUND_HALF_UP
-            )
-
-            long_profit_price = long_target_price
-
-            return float(long_profit_price)
-        return None
-
-    def get_open_take_profit_order_quantities_huobi(self, orders, side):
-        take_profit_orders = []
-        for order in orders:
-            order_info = {
-                "id": order['id'],
-                "price": order['price'],
-                "qty": order['qty'],
-                "order_status": order['order_status'],
-                "side": order['side']
-            }
-            if (
-                order_info['side'].lower() == side.lower()
-                and order_info['order_status'] == '3'  # Adjust the condition based on your order status values
-                and order_info['id'] not in (self.long_entry_order_ids if side.lower() == 'sell' else self.short_entry_order_ids)
-            ):
-                take_profit_orders.append((order_info['qty'], order_info['id']))
-        return take_profit_orders
-
-
-    def get_open_take_profit_order_quantity_huobi(self, symbol, orders, side):
-        current_price = self.get_current_price(symbol)  # You'd need to implement this function
-        long_quantity = None
-        long_order_id = None
-        short_quantity = None
-        short_order_id = None
-
-        for order in orders:
-            order_price = float(order['price'])
-            if order['side'] == 'sell':
-                if side == "close_long" and order_price > current_price:
-                    if 'reduce_only' in order and order['reduce_only']:
-                        continue
-                    long_quantity = order['qty']
-                    long_order_id = order['id']
-                elif side == "close_short" and order_price < current_price:
-                    if 'reduce_only' in order and order['reduce_only']:
-                        continue
-                    short_quantity = order['qty']
-                    short_order_id = order['id']
-            else:
-                if side == "close_short" and order_price > current_price:
-                    if 'reduce_only' in order and not order['reduce_only']:
-                        continue
-                    short_quantity = order['qty']
-                    short_order_id = order['id']
-                elif side == "close_long" and order_price < current_price:
-                    if 'reduce_only' in order and not order['reduce_only']:
-                        continue
-                    long_quantity = order['qty']
-                    long_order_id = order['id']
-
-        if side == "close_long":
-            return long_quantity, long_order_id
-        elif side == "close_short":
-            return short_quantity, short_order_id
-
-        return None, None
-
-    def calculate_actual_quantity_huobi(self, position_qty, parsed_symbol_swap):
-        contract_size_per_unit = self.exchange.get_contract_size_huobi(parsed_symbol_swap)
-        return position_qty * contract_size_per_unit
-
-    def parse_symbol_swap_huobi(self, symbol):
-        if "huobi" in self.exchange.name.lower():
-            base_currency = symbol[:-4]
-            quote_currency = symbol[-4:] 
-            return f"{base_currency}/{quote_currency}:{quote_currency}"
-        return symbol
-
-    def cancel_take_profit_orders_huobi(self, symbol, side):
-        self.exchange.cancel_close_huobi(symbol, side)
-
-    def verify_account_type_huobi(self):
-        if not self.account_type_verified:
-            try:
-                current_account_type = self.exchange.check_account_type_huobi()
-                print(f"Current account type at start: {current_account_type}")
-                if current_account_type['data']['account_type'] != '1':
-                    self.exchange.switch_account_type_huobi(1)
-                    time.sleep(0.05)
-                    print(f"Changed account type")
-                else:
-                    print(f"Account type is already 1")
-
-                self.account_type_verified = True  # set to True after account type is verified or changed
-            except Exception as e:
-                print(f"Error in switching account type {e}")
-                
+               
     # MFIRSI with retry
     def initialize_MFIRSI(self, symbol):
         max_retries = 5
@@ -5974,20 +5651,6 @@ class Strategy:
             logging.info(f"An error occurred while canceling entry orders: {e}")
 
 
-# Bybit cancel all entries
-    def cancel_entries_binance(self, symbol, best_ask_price, ma_1m_3_high, ma_5m_3_high):
-        # Cancel entries
-        current_time = time.time()
-        if current_time - self.last_cancel_time >= 60:  # Execute this block every 1 minute
-            try:
-                if best_ask_price < ma_1m_3_high or best_ask_price < ma_5m_3_high:
-                    self.exchange.cancel_all_entries_binance(symbol)
-                    logging.info(f"Canceled entry orders for {symbol}")
-                    time.sleep(0.05)
-            except Exception as e:
-                logging.info(f"An error occurred while canceling entry orders: {e}")
-
-            self.last_cancel_time = current_time
 
 # Bybit MFI ERI Trend entry logic
 
@@ -6229,236 +5892,3 @@ class Strategy:
             self.short_leverage_increased = False
             self.short_pos_leverage = 1.0
             logging.info(f"Short leverage returned to normal {self.short_pos_leverage}x")
-
-    def binance_auto_hedge_entry(self, trend, one_minute_volume, five_minute_distance, min_vol, min_dist,
-                                should_long, long_pos_qty, long_dynamic_amount, best_bid_price, long_pos_price,
-                                should_add_to_long, max_long_trade_qty, 
-                                should_short, short_pos_qty, short_dynamic_amount, best_ask_price, short_pos_price,
-                                should_add_to_short, max_short_trade_qty, symbol):
-
-        if trend is not None and isinstance(trend, str):
-            if one_minute_volume is not None and five_minute_distance is not None:
-                if one_minute_volume > min_vol and five_minute_distance > min_dist:
-
-                    if trend.lower() == "long" and should_long and long_pos_qty == 0:
-                        print(f"Placing initial long entry")
-                        self.exchange.binance_create_limit_order(symbol, "buy", long_dynamic_amount, best_bid_price)
-                        print(f"Placed initial long entry")
-                    elif trend.lower() == "long" and should_add_to_long and long_pos_qty < max_long_trade_qty and best_bid_price < long_pos_price:
-                        print(f"Placing additional long entry")
-                        self.exchange.binance_create_limit_order(symbol, "buy", long_dynamic_amount, best_bid_price)
-
-                    if trend.lower() == "short" and should_short and short_pos_qty == 0:
-                        print(f"Placing initial short entry")
-                        self.exchange.binance_create_limit_order(symbol, "sell", short_dynamic_amount, best_ask_price)
-                        print("Placed initial short entry")
-                    elif trend.lower() == "short" and should_add_to_short and short_pos_qty < max_short_trade_qty and best_ask_price > short_pos_price:
-                        print(f"Placing additional short entry")
-                        self.exchange.binance_create_limit_order(symbol, "sell", short_dynamic_amount, best_ask_price)
-
-    def binance_auto_hedge_entry_maker(self, trend, one_minute_volume, five_minute_distance, min_vol, min_dist,
-                                should_long, long_pos_qty, long_dynamic_amount, best_bid_price, long_pos_price,
-                                should_add_to_long, max_long_trade_qty, 
-                                should_short, short_pos_qty, short_dynamic_amount, best_ask_price, short_pos_price,
-                                should_add_to_short, max_short_trade_qty, symbol):
-
-        if trend is not None and isinstance(trend, str):
-            if one_minute_volume is not None and five_minute_distance is not None:
-                if one_minute_volume > min_vol and five_minute_distance > min_dist:
-
-                    if trend.lower() == "long" and should_long and long_pos_qty == 0:
-                        print(f"Placing initial long entry")
-                        self.exchange.binance_create_limit_order_with_time_in_force(symbol, "buy", long_dynamic_amount, best_bid_price, "GTC")
-                        print(f"Placed initial long entry")
-                    elif trend.lower() == "long" and should_add_to_long and long_pos_qty < max_long_trade_qty and best_bid_price < long_pos_price:
-                        print(f"Placing additional long entry")
-                        self.exchange.binance_create_limit_order_with_time_in_force(symbol, "buy", long_dynamic_amount, best_bid_price, "GTC")
-
-                    if trend.lower() == "short" and should_short and short_pos_qty == 0:
-                        print(f"Placing initial short entry")
-                        self.exchange.binance_create_limit_order_with_time_in_force(symbol, "sell", short_dynamic_amount, best_ask_price, "GTC")
-                        print("Placed initial short entry")
-                    elif trend.lower() == "short" and should_add_to_short and short_pos_qty < max_short_trade_qty and best_ask_price > short_pos_price:
-                        print(f"Placing additional short entry")
-                        self.exchange.binance_create_limit_order_with_time_in_force(symbol, "sell", short_dynamic_amount, best_ask_price, "GTC")
-
-    def binance_hedge_placetp_maker(self, symbol, pos_qty, take_profit_price, position_side, open_orders):
-        order_side = 'SELL' if position_side == 'LONG' else 'BUY'
-        existing_tps = self.get_open_take_profit_order_quantities_binance(open_orders, order_side)
-
-        print(f"Existing TP IDs: {[order_id for _, order_id in existing_tps]}")
-        print(f"Existing {order_side} TPs: {existing_tps}")
-
-        # Cancel all TP orders if there is more than one existing TP order for the side
-        if len(existing_tps) > 1:
-            logging.info(f"More than one existing TP order found. Cancelling all {order_side} TP orders.")
-            for qty, existing_tp_id in existing_tps:
-                try:
-                    self.exchange.cancel_order_by_id_binance(existing_tp_id, symbol)
-                    logging.info(f"{order_side.capitalize()} take profit {existing_tp_id} canceled")
-                    time.sleep(0.05)
-                except Exception as e:
-                    raise Exception(f"Error in cancelling {order_side} TP orders: {e}") from e
-
-        # If there is exactly one TP order for the side, and its quantity doesn't match the position quantity, cancel it
-        elif len(existing_tps) == 1 and not math.isclose(existing_tps[0][0], pos_qty):
-            logging.info(f"Existing TP qty {existing_tps[0][0]} and position qty {pos_qty} not close. Cancelling the TP order.")
-            try:
-                self.exchange.cancel_order_by_id_binance(existing_tps[0][1], symbol)
-                logging.info(f"{order_side.capitalize()} take profit {existing_tp_id} canceled")
-                time.sleep(0.05)
-            except Exception as e:
-                raise Exception(f"Error in cancelling {order_side} TP orders: {e}") from e
-
-        # Re-check the status of TP orders for the side
-        existing_tps = self.get_open_take_profit_order_quantities_binance(self.exchange.get_open_orders(symbol), order_side)
-
-        # Create a new TP order if no TP orders exist for the side or if all existing TP orders have been cancelled
-        if not existing_tps:
-            logging.info(f"No existing TP orders. Attempting to create new TP order.")
-            try:
-                new_order_id = f"tp_{position_side[:1]}_{uuid.uuid4().hex[:10]}"
-                self.exchange.create_normal_take_profit_order_binance(symbol, order_side, pos_qty, take_profit_price, take_profit_price)#, {'newClientOrderId': new_order_id, 'reduceOnly': True})
-                logging.info(f"{position_side} take profit set at {take_profit_price}")
-                time.sleep(0.05)
-            except Exception as e:
-                raise Exception(f"Error in placing {position_side} TP: {e}") from e
-        else:
-            logging.info(f"Existing TP orders found. Not creating new TP order.")
-
-#    def create_normal_take_profit_order_binance(self, symbol, side, quantity, price, stopPrice):
-
-    # def binance_hedge_placetp_maker(self, symbol, pos_qty, take_profit_price, position_side, open_orders):
-    #     order_side = 'sell' if position_side == 'LONG' else 'buy'
-    #     existing_tps = self.get_open_take_profit_limit_order_quantities_binance(open_orders, order_side)
-
-    #     print(f"Existing TP IDs: {[order_id for _, order_id in existing_tps]}")
-    #     print(f"Existing {order_side} TPs: {existing_tps}")
-
-    #     # Cancel all TP orders if there is more than one existing TP order for the side
-    #     if len(existing_tps) > 1:
-    #         logging.info(f"More than one existing TP order found. Cancelling all {order_side} TP orders.")
-    #         for qty, existing_tp_id in existing_tps:
-    #             try:
-    #                 self.exchange.cancel_order_by_id_binance(existing_tp_id, symbol)
-    #                 logging.info(f"{order_side.capitalize()} take profit {existing_tp_id} canceled")
-    #                 time.sleep(0.05)
-    #             except Exception as e:
-    #                 raise Exception(f"Error in cancelling {order_side} TP orders: {e}") from e
-    #     # If there is exactly one TP order for the side, and its quantity doesn't match the position quantity, cancel it
-    #     elif len(existing_tps) == 1 and not math.isclose(existing_tps[0][0], pos_qty):
-    #         logging.info(f"Existing TP qty {existing_tps[0][0]} and position qty {pos_qty} not close. Cancelling the TP order.")
-    #         try:
-    #             self.exchange.cancel_order_by_id_binance(existing_tps[0][1], symbol)
-    #             logging.info(f"{order_side.capitalize()} take profit {existing_tp_id} canceled")
-    #             time.sleep(0.05)
-    #         except Exception as e:
-    #             raise Exception(f"Error in cancelling {order_side} TP orders: {e}") from e
-
-    #     # Re-check the status of TP orders for the side
-    #     existing_tps = self.get_open_take_profit_limit_order_quantities_binance(self.exchange.get_open_orders(symbol), order_side)
-    #     # Create a new TP order if no TP orders exist for the side or if all existing TP orders have been cancelled
-    #     if not existing_tps:
-    #         logging.info(f"No existing TP orders. Attempting to create new TP order.")
-    #         try:
-    #             self.exchange.binance_create_reduce_only_limit_order(symbol, order_side, pos_qty, take_profit_price)
-    #             logging.info(f"{position_side} take profit set at {take_profit_price}")
-    #             time.sleep(0.05)
-    #         except Exception as e:
-    #             raise Exception(f"Error in placing {position_side} TP: {e}") from e
-    #     else:
-    #         logging.info(f"Existing TP orders found. Not creating new TP order.")
-
-
-    #MARKET ORDER THOUGH
-    def binance_hedge_placetp_market(self, symbol, pos_qty, take_profit_price, position_side, open_orders):
-        order_side = 'sell' if position_side == 'LONG' else 'buy'
-        existing_tps = self.get_open_take_profit_order_quantities_binance(open_orders, order_side)
-
-        print(f"Existing TP IDs: {[order_id for _, order_id in existing_tps]}")
-        print(f"Existing {order_side} TPs: {existing_tps}")
-
-        # Cancel all TP orders if there is more than one existing TP order for the side
-        if len(existing_tps) > 1:
-            logging.info(f"More than one existing TP order found. Cancelling all {order_side} TP orders.")
-            for qty, existing_tp_id in existing_tps:
-                try:
-                    self.exchange.cancel_order_by_id_binance(existing_tp_id, symbol)
-                    logging.info(f"{order_side.capitalize()} take profit {existing_tp_id} canceled")
-                    time.sleep(0.05)
-                except Exception as e:
-                    raise Exception(f"Error in cancelling {order_side} TP orders: {e}") from e
-        # If there is exactly one TP order for the side, and its quantity doesn't match the position quantity, cancel it
-        elif len(existing_tps) == 1 and not math.isclose(existing_tps[0][0], pos_qty):
-            logging.info(f"Existing TP qty {existing_tps[0][0]} and position qty {pos_qty} not close. Cancelling the TP order.")
-            try:
-                existing_tp_id = existing_tps[0][1]
-                self.exchange.cancel_order_by_id_binance(existing_tp_id, symbol)
-                logging.info(f"{order_side.capitalize()} take profit {existing_tp_id} canceled")
-                time.sleep(0.05)
-            except Exception as e:
-                raise Exception(f"Error in cancelling {order_side} TP orders: {e}") from e
-
-        # elif len(existing_tps) == 1 and not math.isclose(existing_tps[0][0], pos_qty):
-        #     logging.info(f"Existing TP qty {existing_tps[0][0]} and position qty {pos_qty} not close. Cancelling the TP order.")
-        #     try:
-        #         self.exchange.cancel_order_by_id_binance(existing_tps[0][1], symbol)
-        #         logging.info(f"{order_side.capitalize()} take profit {existing_tp_id} canceled")
-        #         time.sleep(0.05)
-        #     except Exception as e:
-        #         raise Exception(f"Error in cancelling {order_side} TP orders: {e}") from e
-
-        # Re-check the status of TP orders for the side
-        existing_tps = self.get_open_take_profit_order_quantities_binance(self.exchange.get_open_orders(symbol), order_side)
-        # Create a new TP order if no TP orders exist for the side or if all existing TP orders have been cancelled
-        if not existing_tps:
-            logging.info(f"No existing TP orders. Attempting to create new TP order.")
-            try:
-                new_order_id = f"tp_{position_side[:1]}_{uuid.uuid4().hex[:10]}"
-                self.exchange.binance_create_take_profit_order(symbol, order_side, position_side, pos_qty, take_profit_price, {'stopPrice': take_profit_price, 'newClientOrderId': new_order_id})
-                logging.info(f"{position_side} take profit set at {take_profit_price}")
-                time.sleep(0.05)
-            except Exception as e:
-                raise Exception(f"Error in placing {position_side} TP: {e}") from e
-        else:
-            logging.info(f"Existing TP orders found. Not creating new TP order.")
-
-    # def binance_hedge_placetp_maker(self, symbol, pos_qty, take_profit_price, position_side, open_orders):
-    #     order_side = 'sell' if position_side == 'LONG' else 'buy'
-    #     existing_tps = self.get_open_take_profit_order_quantities_binance(open_orders, order_side)
-
-    #     print(f"Existing TP IDs: {[order_id for _, order_id in existing_tps]}")
-    #     print(f"Existing {order_side} TPs: {existing_tps}")
-
-    #     # Cancel all TP orders if there is more than one existing TP order for the side
-    #     if len(existing_tps) > 1:
-    #         logging.info(f"More than one existing TP order found. Cancelling all {order_side} TP orders.")
-    #         for qty, existing_tp_id in existing_tps:
-    #             try:
-    #                 self.exchange.cancel_order_by_id_binance(existing_tp_id, symbol)
-    #                 logging.info(f"{order_side.capitalize()} take profit {existing_tp_id} canceled")
-    #                 time.sleep(0.05)
-    #             except Exception as e:
-    #                 raise Exception(f"Error in cancelling {order_side} TP orders: {e}") from e
-    #     # If there is exactly one TP order for the side, and its quantity doesn't match the position quantity, cancel it
-    #     elif len(existing_tps) == 1 and not math.isclose(existing_tps[0][0], pos_qty):
-    #         logging.info(f"Existing TP qty {existing_tps[0][0]} and position qty {pos_qty} not close. Cancelling the TP order.")
-    #         try:
-    #             self.exchange.cancel_order_by_id_binance(existing_tps[0][1], symbol)
-    #             logging.info(f"{order_side.capitalize()} take profit {existing_tps[0][1]} canceled")
-    #             time.sleep(0.05)
-    #         except Exception as e:
-    #             raise Exception(f"Error in cancelling {order_side} TP orders: {e}") from e
-
-    #     # Create a new TP order if no TP orders exist for the side or if all existing TP orders have been cancelled
-    #     if not self.get_open_take_profit_order_quantities_binance(self.exchange.get_open_orders(symbol), order_side):
-    #         logging.info(f"No existing TP orders. Attempting to create new TP order.")
-    #         try:
-    #             new_order_id = f"tp_{position_side[:1]}_{uuid.uuid4().hex[:10]}"
-    #             self.exchange.binance_create_take_profit_order(symbol, order_side, position_side, pos_qty, take_profit_price, {'stopPrice': take_profit_price, 'newClientOrderId': new_order_id})
-    #             logging.info(f"{position_side} take profit set at {take_profit_price}")
-    #             time.sleep(0.05)
-    #         except Exception as e:
-    #             raise Exception(f"Error in placing {position_side} TP: {e}") from e
-    #     else:
-    #         logging.info(f"Existing TP orders found. Not creating new TP order.")
